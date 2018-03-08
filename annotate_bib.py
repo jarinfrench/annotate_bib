@@ -11,27 +11,37 @@ else:
     from tkinter import filedialog
 import os
 import re
+import collections
 
 
 class App(object):
     def __init__(self, master):
-        self.fields = ['Author(s)', 'Title', 'Journal', 'Year', 'Volume', 'Issue', 'Pages']
-        self.data = {"AUTHOR": StringVar(), "TITLE": StringVar(), 
+        self.fields = ['Author(s)', 'Title', 'Journal', 'Year', 
+                       'Volume', 'Issue', 'Pages']
+        self.data_keys = ["AUTHOR", "TITLE", "JOURNAL", "YEAR", "VOLUME", 
+                          "ISSUE", "PAGES", "SUMMARY", "CRITIQUE", "RELEVANCE"]
+        self.data = collections.OrderedDict({"AUTHOR": StringVar(), "TITLE": StringVar(), 
                      "JOURNAL": StringVar(), "YEAR": StringVar(),
                      "VOLUME": StringVar(), "ISSUE": StringVar(), 
                      "PAGES": StringVar(), "SUMMARY": StringVar(),
-                     "CRITIQUE": StringVar(), "RELEVANCE": StringVar()}
+                     "CRITIQUE": StringVar(), "RELEVANCE": StringVar()})
         self.textFields = ['Summary', 'Critique', 'Relevance']
-        self.myFileTypes = [("Annotated bibliography files", "*.anbib"), ("Text documents", "*.txt"), ("Bibliography files", "*.bib"), ("All file types", "*.*")]
+        self.myFileTypes = [("Annotated bibliography files", "*.anbib"), 
+                            ("Text documents", "*.txt"), 
+                            ("Bibliography files", "*.bib"), 
+                            ("All file types", "*.*")]
+        self.windowOpen = False
         self.entries = {}
         self.textEntries = {}
-        #root.bind("<Configure>", self.configure)
+        
+        # Set keybindings
         master.bind("<Control-n>", self.openNew)
         master.bind("<Control-s>", self.saveFile)
         master.bind("<Control-o>", self.openFile)
-        root.protocol("WM_DELETE_WINDOW", self.on_exit)
-        self.frame = Frame(master)
-        self.frame.place(relwidth = 0.5, relheight = 0.5, )
+        master.bind("<Control-w>", self.on_exit)
+        root.protocol("WM_DELETE_WINDOW", self.on_exit) # exit protocol
+        #self.frame = Frame(master)
+        #self.frame.place(relwidth = 0.5, relheight = 0.5, )
 
         self.menu = Menu(root)
         root.config(menu=self.menu)
@@ -39,22 +49,21 @@ class App(object):
         self.menu.add_cascade(label="File", menu=self.menu.filemenu)
         self.menu.filemenu.add_command(label="New", command = self.openNew)
         self.menu.filemenu.add_command(label="Open", command = self.openFile)
-        self.menu.filemenu.add_command(label = "Save", command = self.saveFile, state = "disabled")
-        self.menu.filemenu.add_command(label = "Save As", command = self.saveFile, state = "disabled")
-        self.menu.filemenu.add_command(label="Export Bibliography", command = self.exportBib)
+        self.menu.filemenu.add_command(label = "Save", command = self.saveFile, 
+                                       state = "disabled")
+        self.menu.filemenu.add_command(label = "Save As", 
+                                       command = self.saveFile, 
+                                       state = "disabled")
+        self.menu.filemenu.add_command(label="Export Bibliography", 
+                                       command = self.exportBib)
         self.menu.filemenu.add_separator()
         self.menu.filemenu.add_command(label="Quit", command = root.destroy)
 
         self.menu.helpmenu = Menu(self.menu)
         self.menu.add_cascade(label = "Help", menu = self.menu.helpmenu)
         self.menu.helpmenu.add_command(label = "About...", command = self.askAbout)
-
-    def configure(self, event):
-        width, height = event.width, event.height
-        print(event.width, event.height)
-        root.geometry("%sx%s"%(width, height))
     
-    def on_exit(self):
+    def on_exit(self, event = None):
         if messagebox.askyesno("Exit", "Do you want to quit the application?"):
             root.destroy()
             root.quit()
@@ -92,7 +101,14 @@ class App(object):
     def openFile(self, event = None):
         self.filename = filedialog.askopenfilename(initialdir = "~",
                         title = "Select file", filetypes = self.myFileTypes)
+        if not self.windowOpen:
+            self.openNew()
+            self.windowOpen = True
         if self.filename is not '':
+            for key in self.textEntries.keys():
+                self.textEntries[key].delete(1.0, END)
+            for key in self.entries.keys():
+                self.entries[key].delete(0, END)
             text = self.readInFile()
             self.parseFile(text)
 
@@ -109,18 +125,17 @@ class App(object):
         field_strings = ["AUTHOR", "TITLE", "JOURNAL", "YEAR", 
                          "VOLUME", "ISSUE", "PAGES", "SUMMARY", 
                          "CRITIQUE", "RELEVANCE"]
-        def populateFields():
-            self.openNew()
-            self.entries["Author(s)"].insert(END, self.data["AUTHOR"].get())
-            self.entries["Title"].insert(END, self.data["TITLE"].get())
-            self.entries["Journal"].insert(END, self.data["JOURNAL"].get())
-            self.entries["Year"].insert(END, self.data["YEAR"].get())
-            self.entries["Volume"].insert(END, self.data["VOLUME"].get())
-            self.entries["Issue"].insert(END, self.data["ISSUE"].get())
-            self.entries["Pages"].insert(END, self.data["PAGES"].get())
-            self.textEntries["Summary"].insert(END, self.data["SUMMARY"].get())
-            self.textEntries["Critique"].insert(END, self.data["CRITIQUE"].get())
-            self.textEntries["Relevance"].insert(END, self.data["RELEVANCE"].get())
+        def populateFields(dataset):
+            self.entries["Author(s)"].insert(END, dataset["AUTHOR"].get())
+            self.entries["Title"].insert(END, dataset["TITLE"].get())
+            self.entries["Journal"].insert(END, dataset["JOURNAL"].get())
+            self.entries["Year"].insert(END, dataset["YEAR"].get())
+            self.entries["Volume"].insert(END, dataset["VOLUME"].get())
+            self.entries["Issue"].insert(END, dataset["ISSUE"].get())
+            self.entries["Pages"].insert(END, dataset["PAGES"].get())
+            self.textEntries["Summary"].insert(END, dataset["SUMMARY"].get())
+            self.textEntries["Critique"].insert(END, dataset["CRITIQUE"].get())
+            self.textEntries["Relevance"].insert(END, dataset["RELEVANCE"].get())
             
         def parseAnbib(text):
             data = []
@@ -137,7 +152,7 @@ class App(object):
                 sub_data = data[i].split('; ')
                 if sub_data[0] in field_strings:
                     self.data[sub_data[0]].set(sub_data[1].replace("\n", ' '))
-            populateFields()
+            populateFields(self.data)
         
         def parseTxt(text):
             data = []
@@ -154,16 +169,55 @@ class App(object):
             #print(data)
             for data_key, data_val in data:
                 self.data[data_key].set(data_val)
-            populateFields()
+            populateFields(self.data)
         
         def parseBib(text):
             # Note that a bib file may contain multiple entries!  In this case,
             # should I open up a separate file for each of them?  Or should I
             # prompt the user for which data entry to edit?
-            # For now, here is a one-entry bib file.
-            read_error = '''Error reading file %s.\nMake sure the first line of the file is specified in .bib format! (@type{label, )'''%self.filename
-            if not text[0].startswith("@"):
+            # For now, here is a one-entry bib file.            
+            text = re.sub("\n",' ',' '.join(text))
+            bib_labels = re.findall(r"@(.*?){\s*?(.*?),", text)
+            data = [self.data] * len(bib_labels)
+            self.menu.bibtexMenu = Menu(self.menu)
+            self.menu.add_cascade(label = "BibTex Entries", menu = self.menu.bibtexMenu)
+            
+            read_error = '''Error reading file %s.
+Make sure the first line of the file is specified in .bib format! (@type{...'''%self.filename
+            regexs = [r"(?i)author\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)title\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)journal\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)year\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)volume\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)number\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)pages\s*?=\s*?([{\"].*?[}\"])",
+                      r"(?i)summary(:|(\s*?-))\s*?(.*?(?=(critique|relevance|@|$)))",
+                      r"(?i)critique(:|(\s*?-))\s*?(.*?(?=(summary|relevance|@|$)))",
+                      r"(?i)relevance(:|(\s*?-))\s*?(.*?(?=(critique|summary|@|$)))"]
+            if not text.startswith("@"):
                 messagebox.showerror("Read Error", read_error)
+                # read each line until we either a) come to two } symbols next
+                # to each other, b) come to a "} set of symbols, or c) come to
+                # a line that starts with a }
+            for i in range(len(regexs)):
+                result = re.findall(regexs[i], text)
+                print(result)
+                if result:
+                    for j in range(len(result)):
+                        if i < 7:
+                            # Make sure the brackets or quotation marks match!
+                            if (result[j].group(1).startswith("{") and 
+                            result[j].group(1).endswith("}")) or \
+                            (result[j].group(1).startswith("\"") and 
+                            result[j].group(1).endswith("\"")):
+                                data[j][self.data_keys[i]].set(result[j].group(1)[1:-1])
+                        else: # summary, critique, and relevance
+                            data[j][self.data_keys[i]].set((result[j].group(3)).strip())
+                    #print (self.data[self.data_keys[i]].get())
+            for i in range(len(bib_labels)):
+                self.menu.bibtexMenu.add_command(label = bib_labels[i][1],
+                                                 command = (lambda: populateFields(data[i])))
+                
 
 
         file_ext = os.path.splitext(self.filename)[1]
