@@ -13,7 +13,13 @@ import os
 import platform
 import re
 import copy
+import textwrap
 
+def is_empty(struct):
+    if struct:
+        return False
+    else:
+        return True
 
 class App(object):
     def __init__(self, master):
@@ -26,19 +32,24 @@ class App(object):
                      "VOLUME": StringVar(), "ISSUE": StringVar(),
                      "PAGES": StringVar(), "SUMMARY": StringVar(),
                      "CRITIQUE": StringVar(), "RELEVANCE": StringVar()}
+        for key in self.data_keys:
+            self.data[key].trace("w", self.toggleSaveState)
         self.textFields = ['Summary', 'Critique', 'Relevance']
         self.myFileTypes = [("Annotated bibliography files", "*.anbib"),
                             ("Text documents", "*.txt"),
                             ("Bibliography files", "*.bib"),
                             ("All file types", "*.*")]
+        self.filename = ''
         self.windowOpen = False
+        self.isSaved = True
         self.entries = {}
         self.textEntries = {}
+        self.bib_labels = []
 
         # Set keybindings
         master.bind("<Control-n>", self.openNew)
         master.bind("<Control-s>", self.saveFile)
-        master.bind("<Control-Shift-s>", self.saveFileAs)
+        master.bind("<Control-S>", self.saveFileAs)
         master.bind("<Control-o>", self.openFile)
         master.bind("<Control-w>", self.on_exit)
         master.bind("<Control-e>", self.exportBib)
@@ -53,7 +64,7 @@ class App(object):
         self.menu.filemenu.add_command(label = "Save", command = self.saveFile, accelerator = "Ctrl+S",
                                        state = "disabled")
         self.menu.filemenu.add_command(label = "Save As",
-                                       command = self.saveFile, accelerator = "Ctrl+Shift+S",
+                                       command = self.saveFileAs, accelerator = "Ctrl+Shift+S",
                                        state = "disabled")
         self.menu.filemenu.add_command(label= "Export Bibliography",
                                        command = self.exportBib, accelerator = "Ctrl+E")
@@ -67,10 +78,18 @@ class App(object):
         self.menu.add_cascade(label = "Help", menu = self.menu.helpmenu)
         self.menu.helpmenu.add_command(label = "About...", command = self.askAbout)
 
+    def toggleSaveState(self, event = None):
+        self.isSaved = False
+        # NOTE: https://stackoverflow.com/questions/6548837/how-do-i-get-an-event-callback-when-a-tkinter-entry-widget-is-modified/6549535
+        # provides some info on callbacks to change the save state of a file
+
+
     def on_exit(self, event = None):
-        if messagebox.askyesno("Exit", "Do you want to quit the application?"):
-            root.destroy()
-            root.quit()
+        if not self.isSaved:
+            if messagebox.askyesno("", "%s has changes, do you want to save them?"):
+                self.saveFile()
+        root.destroy()
+        root.quit()
 
     def openNew(self, event = None):
         for field in self.fields:
@@ -96,17 +115,17 @@ class App(object):
             t.pack(side=RIGHT, expand = YES, fill=BOTH)
             s.config(command=t.yview)
             t.config(yscrollcommand=s.set, font = "Helvetica 10")
+            t.bind("<<Modified>>", self.toggleSaveState)
             self.textEntries[field] = t
         textEntries.pack(side=TOP, fill=X, padx=5, pady = 5, expand = 1)
         self.menu.filemenu.entryconfig("Save", state = "normal")
         self.menu.filemenu.entryconfig("Save As", state = "normal")
 
-
     def openFile(self, event = None):
         self.filename = filedialog.askopenfilename(initialdir = "~",
                         title = "Select file", filetypes = self.myFileTypes)
-        print(type(self.filename))
-        if not self.filename in ['', None]:
+
+        if not is_empty(self.filename):
             if not self.windowOpen:
                 self.openNew()
                 self.windowOpen = True
@@ -183,17 +202,18 @@ class App(object):
             # prompt the user for which data entry to edit?
             # For now, here is a one-entry bib file.
             text = re.sub("\n",' ',' '.join(text))
-            bib_labels = re.findall(r"@(.*?){\s*?(.*?),", text)
+            self.bib_labels = re.findall(r"@(.*?){\s*?(.*?),", text)
             data = []
-            for i in range(len(bib_labels)):
+            for i in range(len(self.bib_labels)):
                 data.append({"AUTHOR": StringVar(), "TITLE": StringVar(),
                              "JOURNAL": StringVar(), "YEAR": StringVar(),
                              "VOLUME": StringVar(), "ISSUE": StringVar(),
                              "PAGES": StringVar(), "SUMMARY": StringVar(),
                              "CRITIQUE": StringVar(), "RELEVANCE": StringVar()})
+                for key in self.data_keys:
+                    data[i][key].trace("w", self.toggleSaveState)
 
-            read_error = '''Error reading file %s.
-Make sure the first line of the file is specified in .bib format! (@type{...'''%self.filename
+            read_error = '''Error reading file %s.\nMake sure the first line of the file is specified in .bib format! (@type{...'''%self.filename
             regexs = [r"(?i)author\s*?=\s*?([{\"].*?[}\"])",
                       r"(?i)title\s*?=\s*?([{\"].*?[}\"])",
                       r"(?i)journal\s*?=\s*?([{\"].*?[}\"])",
@@ -206,6 +226,7 @@ Make sure the first line of the file is specified in .bib format! (@type{...'''%
                       r"(?i)relevance(:|(\s*?-))\s*?(.*?(?=(critique|summary|@|$)))"]
             if not text.startswith("@"):
                 messagebox.showerror("Read Error", read_error)
+                return
             for i in range(len(regexs)):
                 result = re.findall(regexs[i], text)
                 if result:
@@ -219,11 +240,12 @@ Make sure the first line of the file is specified in .bib format! (@type{...'''%
                                 data[j][self.data_keys[i]].set(result[j][1:-1])
                         else: # summary, critique, and relevance
                             data[j][self.data_keys[i]].set(result[j][2].strip())
-            for i in range(len(bib_labels)):
-                self.menu.bibtexMenu.add_command(label = bib_labels[i][1],
+            for i in range(len(self.bib_labels)):
+                self.menu.bibtexMenu.add_command(label = self.bib_labels[i][1],
                                                  command = (lambda i=i: populateFields(data[i])))
 
             populateFields(data[0])
+            self.data = data
 
         file_ext = os.path.splitext(self.filename)[1]
         if (file_ext == ".anbib"):
@@ -240,8 +262,14 @@ Make sure the first line of the file is specified in .bib format! (@type{...'''%
             #parseOther(text)
 
     def saveFile(self, event = None):
-        try:
+        if self.menu.filemenu.entrycget("Save", "state") == "disabled":
+            return
+
+        if is_empty(self.filename):
+            self.saveFileAs()
+        else:
             ext = os.path.splitext(self.filename)[1]
+
             with open(self.filename, 'w') as fout:
                 if ext == ".anbib":
                     self.saveAsAnBib(fout)
@@ -251,14 +279,20 @@ Make sure the first line of the file is specified in .bib format! (@type{...'''%
                     self.saveAsBib(fout)
                 else:
                     messagebox.showerror("Could Not Save File!", "Could not save file %s"%self.filename)
-        except AttributeError:
-            self.saveFileAs()
+        self.isSaved = True
 
     def saveFileAs(self, event = None):
+        if (self.menu.filemenu.entrycget("Save As", "state") == "disabled"):
+            return
         self.filename = filedialog.asksaveasfilename(initialdir = "~",
-                        title = "Select save destination", filetypes = self.myFileTypes,
+                        title = "Select save destination",
+                        filetypes = self.myFileTypes,
                         defaultextension = ".anbib")
+        if is_empty(self.filename):
+            return
         ext = os.path.splitext(self.filename)[1]
+        print("Saving file %s"%self.filename)
+
         with open(self.filename, 'w') as fout:
             if ext == ".anbib":
                 self.saveAsAnBib(fout)
@@ -268,15 +302,77 @@ Make sure the first line of the file is specified in .bib format! (@type{...'''%
                 self.saveAsBib(fout)
             else:
                 messagebox.showerror("Could Not Save File!", "Could not save file %s"%self.filename)
+        self.isSaved = True
 
     def saveAsAnBib(self, fout):
-        print("Saving as %s"%self.filename)
+        fout.write(textwrap.fill("{AUTHOR; "  + self.entries["Author(s)"].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{TITLE; "   + self.entries["Title"    ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{JOURNAL; " + self.entries["Journal"  ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{YEAR; "    + self.entries["Year"     ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{VOLUME; "  + self.entries["Volume"   ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{ISSUE; "   + self.entries["Issue"    ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{PAGES; "   + self.entries["Pages"    ].get(), 80) + "}\n")
+        fout.write(textwrap.fill("{SUMMARY; "   + self.textEntries["Summary"  ].get('1.0', END), 80) + "}\n")
+        fout.write(textwrap.fill("{CRITIQUE; "  + self.textEntries["Critique" ].get('1.0', END), 80) + "}\n")
+        fout.write(textwrap.fill("{RELEVANCE; " + self.textEntries["Relevance"].get('1.0', END), 80) + "}\n")
 
     def saveAsTxt(self, fout):
+        fout.write(textwrap.fill("AUTHOR: "  + self.entries["Author(s)"].get(), 80) + "\n")
+        fout.write(textwrap.fill("TITLE: "   + self.entries["Title"    ].get(), 80) + "\n")
+        fout.write(textwrap.fill("JOURNAL: " + self.entries["Journal"  ].get(), 80) + "\n")
+        fout.write(textwrap.fill("YEAR: "    + self.entries["Year"     ].get(), 80) + "\n")
+        fout.write(textwrap.fill("VOLUME: "  + self.entries["Volume"   ].get(), 80) + "\n")
+        fout.write(textwrap.fill("ISSUE: "   + self.entries["Issue"    ].get(), 80) + "\n")
+        fout.write(textwrap.fill("PAGES: "   + self.entries["Pages"    ].get(), 80) + "\n")
+        fout.write(textwrap.fill("SUMMARY: "   + self.textEntries["Summary"  ].get('1.0', END), 80) + "\n")
+        fout.write(textwrap.fill("CRITIQUE: "  + self.textEntries["Critique" ].get('1.0', END), 80) + "\n")
+        fout.write(textwrap.fill("RELEVANCE: " + self.textEntries["Relevance"].get('1.0', END), 80) + "\n")
         print("Saving as %s"%self.filename)
 
     def saveAsBib(self, fout):
-        print("Saving as %s"%self.filename)
+        if (isinstance(self.data, list)):
+            for i in range(len(self.data)):
+                if not len(self.bib_labels) == len(self.data):
+                    label = "article%d"%i
+                else:
+                    label = self.bib_labels[i][1]
+                authors = self.data[i]["AUTHOR"].get().split(",")
+                authors = [a.strip() for a in authors] # strip excess white space
+                pages = self.data[i]["PAGES"].get().split("-")
+
+                fout.write("@article{ " + label + ",\n")
+                fout.write(textwrap.fill("  AUTHOR  = {" + " and ".join(authors), 80) + "},\n")
+                fout.write(textwrap.fill("  TITLE   = {" + self.data[i]["TITLE"    ].get(), 80) + "},\n")
+                fout.write(textwrap.fill("  JOURNAL = {" + self.data[i]["JOURNAL"  ].get(), 80) + "},\n")
+                fout.write(textwrap.fill("  YEAR    = {" + self.data[i]["YEAR"     ].get(), 80) + "},\n")
+                fout.write(textwrap.fill("  VOLUME  = {" + self.data[i]["VOLUME"   ].get(), 80) + "},\n")
+                fout.write(textwrap.fill("  ISSUE   = {" + self.data[i]["ISSUE"    ].get(), 80) + "},\n")
+                fout.write(textwrap.fill("  PAGES   = {" + "--".join(pages), 80) + "},\n}\n")
+                fout.write(textwrap.fill("SUMMARY: "   + self.data[i]["SUMMARY"  ].get(), 80) + "\n\n")
+                fout.write(textwrap.fill("CRITIQUE: "  + self.data[i]["CRITIQUE" ].get(), 80) + "\n\n")
+                fout.write(textwrap.fill("RELEVANCE: " + self.data[i]["RELEVANCE"].get(), 80) + "\n\n")
+        else:
+            if not len(self.bib_labels) == 1:
+                label = "article1"
+            else:
+                label = self.bib_labels[0][1]
+
+            authors = self.data["AUTHOR"].get().split()
+            authors = [a.strip() for a in authors] # strip excess white space
+            pages = self.data["PAGES"].get().split("-")
+
+            fout.write("@article{ " + label + ",\n")
+            fout.write(textwrap.fill("  AUTHOR  = {" + " and ".join(authors), 80) + "},\n")
+            fout.write(textwrap.fill("  TITLE   = {" + self.data["TITLE"    ].get(), 80) + "},\n")
+            fout.write(textwrap.fill("  JOURNAL = {" + self.data["JOURNAL"  ].get(), 80) + "},\n")
+            fout.write(textwrap.fill("  YEAR    = {" + self.data["YEAR"     ].get(), 80) + "},\n")
+            fout.write(textwrap.fill("  VOLUME  = {" + self.data["VOLUME"   ].get(), 80) + "},\n")
+            fout.write(textwrap.fill("  ISSUE   = {" + self.data["ISSUE"    ].get(), 80) + "},\n")
+            fout.write(textwrap.fill("  PAGES   = {" + "--".join(pages), 80) + "},\n}\n")
+            fout.write(textwrap.fill("SUMMARY: "   + self.data["SUMMARY"  ].get(), 80) + "\n")
+            fout.write(textwrap.fill("CRITIQUE: "  + self.data["CRITIQUE" ].get(), 80) + "\n")
+            fout.write(textwrap.fill("RELEVANCE: " + self.data["RELEVANCE"].get(), 80) + "\n")
+            print("Saving as %s"%self.filename)
 
     def exportBib(self):
         msg = "Bibliography exported to annotated_bib.bib"
