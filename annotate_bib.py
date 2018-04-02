@@ -12,7 +12,6 @@ else:
 import os
 import platform
 import re
-import copy
 import textwrap
 
 def is_empty(struct):
@@ -32,8 +31,7 @@ class App(object):
                      "VOLUME": StringVar(), "ISSUE": StringVar(),
                      "PAGES": StringVar(), "SUMMARY": StringVar(),
                      "CRITIQUE": StringVar(), "RELEVANCE": StringVar()}
-        for key in self.data_keys:
-            self.data[key].trace("w", self.toggleSaveState)
+
         self.textFields = ['Summary', 'Critique', 'Relevance']
         self.myFileTypes = [("Annotated bibliography files", "*.anbib"),
                             ("Text documents", "*.txt"),
@@ -83,10 +81,9 @@ class App(object):
         # NOTE: https://stackoverflow.com/questions/6548837/how-do-i-get-an-event-callback-when-a-tkinter-entry-widget-is-modified/6549535
         # provides some info on callbacks to change the save state of a file
 
-
     def on_exit(self, event = None):
         if not self.isSaved:
-            if messagebox.askyesno("", "%s has changes, do you want to save them?"):
+            if messagebox.askyesno("", "Would you like to save your changes?"):
                 self.saveFile()
         root.destroy()
         root.quit()
@@ -147,10 +144,12 @@ class App(object):
                          "CRITIQUE", "RELEVANCE"]
 
         def populateFields(dataset):
+            print(dataset["AUTHOR"].get(), dataset["TITLE"].get(), dataset["JOURNAL"].get(), dataset["YEAR"].get(), dataset["VOLUME"].get() )
             for key in self.textEntries.keys():
                 self.textEntries[key].delete(1.0, END)
             for key in self.entries.keys():
                 self.entries[key].delete(0, END)
+            print(self.entries["Author(s)"].get())
             self.entries["Author(s)"].insert(END, dataset["AUTHOR"].get())
             self.entries["Title"].insert(END, dataset["TITLE"].get())
             self.entries["Journal"].insert(END, dataset["JOURNAL"].get())
@@ -197,10 +196,6 @@ class App(object):
             populateFields(self.data)
 
         def parseBib(text):
-            # Note that a bib file may contain multiple entries!  In this case,
-            # should I open up a separate file for each of them?  Or should I
-            # prompt the user for which data entry to edit?
-            # For now, here is a one-entry bib file.
             text = re.sub("\n",' ',' '.join(text))
             self.bib_labels = re.findall(r"@(.*?){\s*?(.*?),", text)
             data = []
@@ -210,8 +205,6 @@ class App(object):
                              "VOLUME": StringVar(), "ISSUE": StringVar(),
                              "PAGES": StringVar(), "SUMMARY": StringVar(),
                              "CRITIQUE": StringVar(), "RELEVANCE": StringVar()})
-                for key in self.data_keys:
-                    data[i][key].trace("w", self.toggleSaveState)
 
             read_error = '''Error reading file %s.\nMake sure the first line of the file is specified in .bib format! (@type{...'''%self.filename
             regexs = [r"(?i)author\s*?=\s*?([{\"].*?[}\"])",
@@ -407,15 +400,9 @@ class App(object):
 if __name__ == "__main__":
     root = Tk()
     root.title("Annotated Bibliography")
-    #m = root.maxsize()
-    #print(m)
-    #root.geometry('{}x{}+0+0'.format(*m))
     if platform.system() == "Windows":
         root.wm_state("zoomed")
     elif platform.system() in ["Linux", "Darwin"]:
         root.attributes('-zoomed', True)
-    #screen_width = root.winfo_screenwidth()
-    #screen_height = root.winfo_screenheight()
-    #root.geometry('%sx%s'%(screen_width, screen_height))
     app = App(root)
     root.mainloop()
